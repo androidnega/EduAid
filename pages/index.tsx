@@ -36,7 +36,7 @@ export default function Home() {
             </div>
             <div className="bg-white p-6 shadow rounded">
               <h3 className="text-xl font-semibold text-blue-600">2. Submit Your Task</h3>
-              <p className="mt-2 text-gray-600">Fill the form or upload your file. The system reviews and calculates what's needed.</p>
+              <p className="mt-2 text-gray-600">Fill the form or upload your file. The system reviews and calculates what&apos;s needed.</p>
             </div>
             <div className="bg-white p-6 shadow rounded">
               <h3 className="text-xl font-semibold text-blue-600">3. Track Progress</h3>
