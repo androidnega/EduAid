@@ -29,4 +29,11 @@ export interface PaystackConfig {
   metadata?: PaystackMetadata;
   channels?: string[];
   currency?: string;
-} 
+  onSuccess?: (response: PaystackResponse) => void;
+  onClose?: () => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+// PaystackButtonProps is the same as PaystackConfig for now
+export type PaystackButtonProps = PaystackConfig; 

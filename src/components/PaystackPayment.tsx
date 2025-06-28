@@ -1,9 +1,25 @@
 'use client';
 
-import React from 'react';
-import { PaystackButton } from 'react-paystack';
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PaystackResponse, PaystackCustomField } from '@/types/paystack';
+
+// Dynamically import PaystackButton to avoid SSR issues
+const PaystackButton = dynamic(
+  () => import('react-paystack').then((mod) => mod.PaystackButton),
+  { 
+    ssr: false,
+    loading: () => (
+      <button 
+        disabled 
+        className="px-6 py-3 bg-gray-400 text-white rounded-md cursor-not-allowed"
+      >
+        Loading...
+      </button>
+    )
+  }
+);
 
 interface PaystackPaymentProps {
   amount: number; // Amount in GHS (will be converted to kobo)
@@ -27,6 +43,11 @@ export default function PaystackPayment({
   className = ""
 }: PaystackPaymentProps) {
   const { user } = useAuth();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Paystack configuration
   const config = {
@@ -66,6 +87,18 @@ export default function PaystackPayment({
       onClose();
     }
   };
+
+  // Show loading state during SSR
+  if (!isClient) {
+    return (
+      <button
+        disabled
+        className={`px-6 py-3 bg-gray-400 text-white rounded-md cursor-not-allowed ${className}`}
+      >
+        Loading...
+      </button>
+    );
+  }
 
   // Don't render if no user email or public key
   if (!user?.email || !config.publicKey) {
