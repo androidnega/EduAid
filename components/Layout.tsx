@@ -2,10 +2,10 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { auth } from '../lib/firebase'
 import { signIn, signOutUser } from '../lib/auth'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, User } from 'firebase/auth'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -21,6 +21,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="space-x-4">
           <Link href="/upload" className="hover:text-blue-600 font-medium">Submit Task</Link>
           <Link href="/dashboard" className="hover:text-blue-600 font-medium">Dashboard</Link>
+          <Link href="/admin-login" className="hover:text-red-600 font-medium">Admin</Link>
           {!user ? (
             <button onClick={signIn} className="bg-blue-600 text-white py-1 px-4 rounded">Login</button>
           ) : (

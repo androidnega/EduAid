@@ -2,6 +2,7 @@ import Head from 'next/head'
 import Layout from '../components/Layout'
 import { db } from '../lib/firebase'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/router'
 import { collection, onSnapshot, updateDoc, doc, Timestamp } from 'firebase/firestore'
 
 type Task = {
@@ -17,8 +18,18 @@ type Task = {
 export default function AdminPanel() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
+    // Check admin authentication
+    const isAdmin = localStorage.getItem('isAdmin')
+    if (!isAdmin) {
+      router.push('/admin-login')
+      return
+    }
+    setIsAuthenticated(true)
+
     const unsubscribe = onSnapshot(collection(db, 'tasks'), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -29,7 +40,7 @@ export default function AdminPanel() {
     })
 
     return () => unsubscribe()
-  }, [])
+  }, [router])
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     try {
@@ -48,9 +59,26 @@ export default function AdminPanel() {
 
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold text-blue-600 mb-6">Admin Task Manager</h1>
+        
+        <div className="mb-4">
+          <button
+            onClick={() => {
+              localStorage.removeItem('isAdmin')
+              localStorage.removeItem('adminUser')
+              router.push('/admin-login')
+            }}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+          >
+            Admin Logout
+          </button>
+        </div>
 
-        {loading ? (
+        {!isAuthenticated ? (
+          <p className="text-gray-600">Checking authentication...</p>
+        ) : loading ? (
           <p className="text-gray-600">Loading all tasks...</p>
+        ) : tasks.length === 0 ? (
+          <p className="text-gray-600">No tasks found.</p>
         ) : (
           <div className="space-y-4">
             {tasks.map((task) => (
