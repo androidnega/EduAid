@@ -1,15 +1,80 @@
 import Head from 'next/head'
+import Layout from '../components/Layout'
+import { db } from '../lib/firebase'
+import { useEffect, useState } from 'react'
+import { collection, onSnapshot, updateDoc, doc, Timestamp } from 'firebase/firestore'
 
-export default function Admin() {
+type Task = {
+  id: string
+  category: string
+  language: string
+  status: string
+  fileName: string
+  userEmail: string
+  createdAt: Timestamp
+}
+
+export default function AdminPanel() {
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Task[]
+      setTasks(data)
+      setLoading(false)
+    })
+
+    return () => unsubscribe()
+  }, [])
+
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    try {
+      const taskRef = doc(db, 'tasks', taskId)
+      await updateDoc(taskRef, { status: newStatus })
+    } catch (err) {
+      console.error('Failed to update status:', err)
+    }
+  }
+
   return (
-    <>
+    <Layout>
       <Head>
-        <title>Admin - CodeAi</title>
+        <title>Admin Panel - CodeAi</title>
       </Head>
-      <div>
-        <h1>Admin Panel</h1>
-        <p>Admin controls...</p>
+
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-2xl font-bold text-blue-600 mb-6">Admin Task Manager</h1>
+
+        {loading ? (
+          <p className="text-gray-600">Loading all tasks...</p>
+        ) : (
+          <div className="space-y-4">
+            {tasks.map((task) => (
+              <div key={task.id} className="bg-white border-l-4 border-blue-600 p-4 shadow rounded-md">
+                <h2 className="text-lg font-semibold">{task.category}</h2>
+                <p className="text-sm text-gray-500">Language: {task.language}</p>
+                <p className="text-sm text-gray-500">User: {task.userEmail}</p>
+                <p className="text-sm text-gray-500">File: {task.fileName}</p>
+                <p className="text-sm text-blue-600 font-semibold mb-2">Current Status: {task.status}</p>
+
+                <select
+                  className="border p-2 rounded bg-gray-100"
+                  value={task.status}
+                  onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                >
+                  <option value="submitted">Submitted</option>
+                  <option value="processing">Processing</option>
+                  <option value="done">Done</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </>
+    </Layout>
   )
 } 
