@@ -4,8 +4,7 @@ import { getErrorMessage, getSuccessMessage, getLoadingMessage } from '../utils/
 import Notification, { useNotification } from '../components/Notification';
 import { db, auth } from '../lib/firebase'
 import { collection, addDoc, Timestamp } from 'firebase/firestore'
-import ProtectedRoute from '../components/ProtectedRoute'
-import Layout from '../components/Layout'
+import DashboardLayout from '../components/DashboardLayout'
 
 export default function Upload() {
   const [category, setCategory] = useState('')
@@ -82,24 +81,28 @@ export default function Upload() {
   };
 
   return (
-    <ProtectedRoute>
-      <Layout>
-        <Head>
-          <title>Submit Task - CodeAi</title>
-        </Head>
-        
-        {notification && (
-          <Notification
-            message={notification.message}
-            type={notification.type}
-            onClose={hideNotification}
-          />
-        )}
-        
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-blue-600 mb-6">Submit Your Project</h1>
+    <DashboardLayout title="Submit New Task">
+      <Head>
+        <title>Submit Task - CodeAi Student Portal</title>
+        <meta name="description" content="Submit your I.T. assignment or project" />
+      </Head>
+      
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={hideNotification}
+        />
+      )}
+      
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Submission Form</h2>
+            <p className="text-gray-600">Fill out the details below to submit your I.T. assignment or project</p>
+          </div>
           
-          <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded shadow-md max-w-xl">
+          <form onSubmit={handleSubmit} className="space-y-6">
             
             {/* Task Type */}
             <div>
@@ -179,13 +182,20 @@ export default function Upload() {
             <button 
               type="submit" 
               disabled={isSubmitting}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white p-3 rounded-lg font-semibold transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              {isSubmitting ? 'Uploading Project...' : 'Submit Task'}
+              {isSubmitting ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Uploading Project...
+                </div>
+              ) : (
+                'Submit Task'
+              )}
             </button>
           </form>
         </div>
-      </Layout>
-    </ProtectedRoute>
+      </div>
+    </DashboardLayout>
   )
 } 

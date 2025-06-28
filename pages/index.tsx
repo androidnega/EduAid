@@ -1,8 +1,22 @@
 import Head from 'next/head'
 import Layout from '../components/Layout'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { auth } from '../lib/firebase'
+import { onAuthStateChanged, User } from 'firebase/auth'
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setUser(user)
+      setLoading(false)
+    })
+    return () => unsub()
+  }, [])
+
   return (
     <Layout>
       <Head>
@@ -22,20 +36,36 @@ export default function Home() {
               CodeAi helps Ghanaian university students with their coding tasks, I.T. projects, and research work. 
               Upload your task, track progress, and get professional assistance.
             </p>
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center sm:gap-6">
-              <Link 
-                href="/upload" 
-                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:px-8 sm:py-4 sm:text-lg"
-              >
-                Submit Your Task
-              </Link>
-              <Link 
-                href="/dashboard" 
-                className="inline-flex items-center justify-center rounded-lg border-2 border-blue-600 bg-white px-6 py-3 text-base font-semibold text-blue-600 transition-all hover:bg-blue-50 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:px-8 sm:py-4 sm:text-lg"
-              >
-                View Dashboard
-              </Link>
-            </div>
+            
+            {!loading && (
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:justify-center sm:gap-6">
+                {user ? (
+                  // Logged in user - show both buttons
+                  <>
+                    <Link 
+                      href="/upload" 
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:px-8 sm:py-4 sm:text-lg"
+                    >
+                      Submit Your Task
+                    </Link>
+                    <Link 
+                      href="/dashboard" 
+                      className="inline-flex items-center justify-center rounded-lg border-2 border-blue-600 bg-white px-6 py-3 text-base font-semibold text-blue-600 transition-all hover:bg-blue-50 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:px-8 sm:py-4 sm:text-lg"
+                    >
+                      View My Dashboard
+                    </Link>
+                  </>
+                ) : (
+                  // Not logged in - only show sign up encouragement
+                  <Link 
+                    href="/login" 
+                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:px-8 sm:py-4 sm:text-lg"
+                  >
+                    Get Started - Sign In
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </section>
 

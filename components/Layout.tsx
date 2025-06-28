@@ -108,12 +108,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     >
                       Student Login
                     </button>
-                    <Link 
-                      href="/admin-login" 
-                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                    >
-                      Admin Login
-                    </Link>
                   </div>
                 ) : isAdmin ? (
                   <div className="flex items-center space-x-3">
@@ -224,13 +218,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   >
                     Student Login
                   </button>
-                  <Link 
-                    href="/admin-login" 
-                    className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg text-base font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 block text-center"
-                    onClick={closeMobileMenu}
-                  >
-                    Admin Login
-                  </Link>
                 </div>
               ) : isAdmin ? (
                 <div className="space-y-3">
