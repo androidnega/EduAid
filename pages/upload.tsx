@@ -5,6 +5,7 @@ import Notification, { useNotification } from '../components/Notification';
 import { db, auth } from '../lib/firebase'
 import { collection, addDoc, Timestamp } from 'firebase/firestore'
 import DashboardLayout from '../components/DashboardLayout'
+import { extractTextFromFile, TaskDetails } from '../lib/priceAI'
 
 export default function Upload() {
   // Form state
@@ -22,6 +23,8 @@ export default function Upload() {
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [price, setPrice] = useState<number | null>(null)
+  const [aiPrice, setAiPrice] = useState<string | null>(null)
+  const [isLoadingAI, setIsLoadingAI] = useState(false)
   const [showPricing, setShowPricing] = useState(false)
   const { notification, showNotification, hideNotification } = useNotification()
 
@@ -60,6 +63,60 @@ export default function Upload() {
 
     setPrice(Math.round(basePrice))
     setShowPricing(true)
+  }
+
+  // AI-powered price suggestion
+  const handleAIPriceCheck = async () => {
+    if (!category || !level || !urgency || !complexity) {
+      showNotification('Please fill in all required fields first', 'error');
+      return;
+    }
+
+    setIsLoadingAI(true);
+    showNotification('AI is analyzing your task...', 'loading');
+
+    try {
+      // Get file content if available
+      let fileContent = '';
+      if (file) {
+        fileContent = await extractTextFromFile(file);
+      }
+
+      // Prepare task details for AI analysis
+      const taskDetails: TaskDetails = {
+        category,
+        level,
+        urgency,
+        pageCount: typeof pageCount === 'number' ? pageCount : 0,
+        complexity,
+        language: language || 'Not specified',
+        description: `${category} project for ${level} level with ${urgency} urgency`,
+        fileContent
+      };
+
+      // Call API route for AI price suggestion
+      const response = await fetch('/api/ai-price', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(taskDetails),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get AI price suggestion');
+      }
+
+      const result = await response.json();
+      setAiPrice(result.price);
+      setShowPricing(true);
+      showNotification('AI price analysis complete!', 'success');
+    } catch (error) {
+      console.error('AI Price Error:', error);
+      showNotification('Failed to get AI price suggestion. Please try again.', 'error');
+    } finally {
+      setIsLoadingAI(false);
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,6 +186,7 @@ export default function Upload() {
       setGroupSize(1);
       setFile(null);
       setPrice(null);
+      setAiPrice(null);
       setShowPricing(false);
       
       // Reset file input
@@ -355,30 +413,68 @@ export default function Upload() {
               </div>
             </div>
 
-            {/* Check Price Button */}
+            {/* Check Price Buttons */}
             <div className="bg-blue-50 rounded-lg p-6">
-              <button 
-                type="button" 
-                onClick={calculatePrice} 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 mb-4"
-              >
-                💰 Check Estimated Price
-              </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <button 
+                  type="button" 
+                  onClick={calculatePrice} 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  💰 Check Estimated Price
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={handleAIPriceCheck}
+                  disabled={isLoadingAI || !category || !level || !urgency || !complexity}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                >
+                  {isLoadingAI ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      AI Analyzing...
+                    </div>
+                  ) : (
+                    '🤖 Get AI Suggested Price'
+                  )}
+                </button>
+              </div>
 
               {/* Price Display */}
-              {showPricing && price && (
-                <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-700 mb-2">
-                      Estimated Price: ₵{price.toFixed(2)}
+              {showPricing && (price || aiPrice) && (
+                <div className="space-y-4">
+                  {price && (
+                    <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-700 mb-2">
+                          Logic-Based Price: ₵{price.toFixed(2)}
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Price calculated based on level, complexity, and urgency
+                        </p>
+                        <div className="mt-3 text-xs text-gray-500">
+                          🎯 Level: {level} | ⚡ Urgency: {urgency} | 🔧 Complexity: {complexity}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-600">
-                      Price calculated based on level, complexity, and urgency
-                    </p>
-                    <div className="mt-3 text-xs text-gray-500">
-                      🎯 Level: {level} | ⚡ Urgency: {urgency} | 🔧 Complexity: {complexity}
+                  )}
+                  
+                  {aiPrice && (
+                    <div className="bg-white rounded-lg p-4 border-2 border-purple-200">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-700 mb-2">
+                          AI Suggested Price: {aiPrice}
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          AI-powered analysis including file content and task complexity
+                        </p>
+                        <div className="mt-3 text-xs text-purple-600 font-medium">
+                          🤖 Enhanced with OpenAI analysis
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -395,7 +491,7 @@ export default function Upload() {
                   Submitting Project...
                 </div>
               ) : (
-                `🚀 Submit Task${price ? ` (₵${price.toFixed(2)})` : ''}`
+                `🚀 Submit Task${price ? ` (₵${price.toFixed(2)})` : aiPrice ? ` (${aiPrice})` : ''}`
               )}
             </button>
           </form>
