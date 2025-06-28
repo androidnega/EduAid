@@ -34,7 +34,7 @@ export default function Login() {
         router.push('/dashboard');
       }, 1000);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Show user-friendly error message
       const friendlyMessage = getErrorMessage(error);
       showNotification(friendlyMessage, 'error');
@@ -56,7 +56,7 @@ export default function Login() {
         router.push('/dashboard');
       }, 1000);
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       const friendlyMessage = getErrorMessage(error);
       showNotification(friendlyMessage, 'error');
     } finally {
@@ -81,7 +81,6 @@ export default function Login() {
       <main className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6">
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold text-blue-600">CodeAi</h1>
             <p className="text-gray-600 mt-2">Sign in to your account</p>
           </div>
 
@@ -150,7 +149,7 @@ export default function Login() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <a href="/register" className="text-blue-600 hover:text-blue-700 font-medium">
                 Sign up here
               </a>
