@@ -4,12 +4,12 @@ import { getFirestore } from 'firebase/firestore'
 
 // Firebase configuration for task submission system
 const firebaseConfig = {
-  apiKey: "AIzaSyCTIoJ3clD2dlYyyOP7YO7HDThZbsRmi4E",
-  authDomain: "codeai-4214f.firebaseapp.com",
-  projectId: "codeai-4214f",
-  storageBucket: "codeai-4214f.firebasestorage.app",
-  messagingSenderId: "864173304886",
-  appId: "1:864173304886:web:b539ad496afe6a64713c97"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 }
 
 const app = initializeApp(firebaseConfig)
