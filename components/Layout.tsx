@@ -7,11 +7,17 @@ import { onAuthStateChanged, User } from 'firebase/auth'
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setUser(user)
     })
+    
+    // Check admin status
+    const adminStatus = localStorage.getItem('isAdmin')
+    setIsAdmin(adminStatus === 'true')
+    
     return () => unsub()
   }, [])
 
@@ -21,6 +27,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const closeMobileMenu = () => {
     setMobileMenuOpen(false)
+  }
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('isAdmin')
+    localStorage.removeItem('adminUser')
+    setIsAdmin(false)
+    closeMobileMenu()
+    window.location.href = '/admin-login'
   }
 
   return (
@@ -42,35 +56,78 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex md:items-center md:space-x-6">
-              <Link 
-                href="/upload" 
-                className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-blue-50"
-              >
-                Submit Task
-              </Link>
-              <Link 
-                href="/dashboard" 
-                className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-blue-50"
-              >
-                Dashboard
-              </Link>
-              <Link 
-                href="/admin-login" 
-                className="text-gray-700 hover:text-red-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-red-50"
-              >
-                Admin
-              </Link>
-              
-              {/* Auth Button */}
-              <div className="ml-4">
-                {!user ? (
-                  <button 
-                    onClick={signIn} 
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              {/* Guest/Public Navigation */}
+              {!user && !isAdmin && (
+                <>
+                  <Link 
+                    href="/" 
+                    className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-blue-50"
                   >
-                    Login
-                  </button>
-                ) : (
+                    Home
+                  </Link>
+                </>
+              )}
+
+              {/* Logged-in User Navigation */}
+              {user && !isAdmin && (
+                <>
+                  <Link 
+                    href="/upload" 
+                    className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-blue-50"
+                  >
+                    Submit Task
+                  </Link>
+                  <Link 
+                    href="/dashboard" 
+                    className="text-gray-700 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-blue-50"
+                  >
+                    My Dashboard
+                  </Link>
+                </>
+              )}
+
+              {/* Admin Navigation */}
+              {isAdmin && (
+                <>
+                  <Link 
+                    href="/admin" 
+                    className="text-gray-700 hover:text-red-600 px-3 py-2 text-sm font-medium transition-colors rounded-md hover:bg-red-50"
+                  >
+                    Admin Dashboard
+                  </Link>
+                </>
+              )}
+              
+              {/* Auth Section */}
+              <div className="ml-4">
+                {!user && !isAdmin ? (
+                  <div className="flex space-x-3">
+                    <button 
+                      onClick={signIn} 
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                      Student Login
+                    </button>
+                    <Link 
+                      href="/admin-login" 
+                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                    >
+                      Admin Login
+                    </Link>
+                  </div>
+                ) : isAdmin ? (
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm text-red-600 hidden lg:block font-medium">
+                      Admin Panel
+                    </span>
+                    <button 
+                      onClick={handleAdminLogout} 
+                      className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                    >
+                      Admin Logout
+                    </button>
+                  </div>
+                ) : user ? (
                   <div className="flex items-center space-x-3">
                     <span className="text-sm text-gray-600 hidden lg:block">
                       {user.email}
@@ -82,7 +139,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       Logout
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -111,41 +168,83 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Mobile menu */}
         <div className={`md:hidden ${mobileMenuOpen ? 'block' : 'hidden'}`}>
           <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200 shadow-lg">
-            <Link 
-              href="/upload" 
-              className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
-              onClick={closeMobileMenu}
-            >
-              Submit Task
-            </Link>
-            <Link 
-              href="/dashboard" 
-              className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
-              onClick={closeMobileMenu}
-            >
-              Dashboard
-            </Link>
-            <Link 
-              href="/admin-login" 
-              className="text-gray-700 hover:text-red-600 hover:bg-red-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
-              onClick={closeMobileMenu}
-            >
-              Admin Access
-            </Link>
+            
+            {/* Guest/Public Mobile Navigation */}
+            {!user && !isAdmin && (
+              <Link 
+                href="/" 
+                className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
+                onClick={closeMobileMenu}
+              >
+                Home
+              </Link>
+            )}
+
+            {/* Logged-in User Mobile Navigation */}
+            {user && !isAdmin && (
+              <>
+                <Link 
+                  href="/upload" 
+                  className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
+                  onClick={closeMobileMenu}
+                >
+                  Submit Task
+                </Link>
+                <Link 
+                  href="/dashboard" 
+                  className="text-gray-700 hover:text-blue-600 hover:bg-blue-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
+                  onClick={closeMobileMenu}
+                >
+                  My Dashboard
+                </Link>
+              </>
+            )}
+
+            {/* Admin Mobile Navigation */}
+            {isAdmin && (
+              <Link 
+                href="/admin" 
+                className="text-gray-700 hover:text-red-600 hover:bg-red-50 block px-3 py-3 text-base font-medium transition-colors rounded-md"
+                onClick={closeMobileMenu}
+              >
+                Admin Dashboard
+              </Link>
+            )}
             
             {/* Mobile Auth Section */}
             <div className="pt-4 border-t border-gray-200">
-              {!user ? (
-                <button 
-                  onClick={() => {
-                    signIn()
-                    closeMobileMenu()
-                  }} 
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-base font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  Login with Google
-                </button>
-              ) : (
+              {!user && !isAdmin ? (
+                <div className="space-y-3">
+                  <button 
+                    onClick={() => {
+                      signIn()
+                      closeMobileMenu()
+                    }} 
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-base font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  >
+                    Student Login
+                  </button>
+                  <Link 
+                    href="/admin-login" 
+                    className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg text-base font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 block text-center"
+                    onClick={closeMobileMenu}
+                  >
+                    Admin Login
+                  </Link>
+                </div>
+              ) : isAdmin ? (
+                <div className="space-y-3">
+                  <div className="px-3 py-2">
+                    <p className="text-sm text-red-600 font-medium">Admin Panel Access</p>
+                  </div>
+                  <button 
+                    onClick={handleAdminLogout} 
+                    className="w-full bg-red-100 hover:bg-red-200 text-red-700 px-4 py-3 rounded-lg text-base font-medium transition-colors border border-red-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                  >
+                    Admin Logout
+                  </button>
+                </div>
+              ) : user ? (
                 <div className="space-y-3">
                   <div className="px-3 py-2">
                     <p className="text-sm text-gray-600">Signed in as:</p>
@@ -161,7 +260,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     Logout
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
