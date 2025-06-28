@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useState } from 'react'
 import { getErrorMessage, getSuccessMessage, getLoadingMessage } from '../utils/errorMessages';
 import Notification, { useNotification } from '../components/Notification';
-import { db } from '../lib/firebase'
+import { db, auth } from '../lib/firebase'
 import { collection, addDoc, Timestamp } from 'firebase/firestore'
 
 export default function Upload() {
@@ -18,6 +18,13 @@ export default function Upload() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if user is logged in
+    const user = auth.currentUser
+    if (!user) {
+      showNotification('Please login first', 'error');
+      return;
+    }
+
     // Validation
     if (!category || !language || !refStyle) {
       showNotification('Please fill in all required fields.', 'error');
@@ -44,6 +51,8 @@ export default function Upload() {
         fileSize: file.size,
         fileType: file.type,
         status: 'submitted',
+        userId: user.uid,
+        userEmail: user.email,
         createdAt: Timestamp.now(),
       });
       
