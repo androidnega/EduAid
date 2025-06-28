@@ -2,6 +2,8 @@ import Head from 'next/head'
 import { useState } from 'react'
 import { getErrorMessage, getSuccessMessage, getLoadingMessage } from '../utils/errorMessages';
 import Notification, { useNotification } from '../components/Notification';
+import { db } from '../lib/firebase'
+import { collection, addDoc, Timestamp } from 'firebase/firestore'
 
 export default function Upload() {
   const [category, setCategory] = useState('')
@@ -31,8 +33,19 @@ export default function Upload() {
     showNotification(getLoadingMessage('upload'), 'loading');
 
     try {
-      // Simulate file upload
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Save task to Firestore
+      await addDoc(collection(db, 'tasks'), {
+        category,
+        language,
+        referencing: refStyle,
+        group: workType === 'group',
+        groupSize: workType === 'group' ? groupSize : 1,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        status: 'submitted',
+        createdAt: Timestamp.now(),
+      });
       
       // On success
       showNotification(getSuccessMessage('upload'), 'success');
@@ -44,6 +57,10 @@ export default function Upload() {
       setWorkType('individual');
       setGroupSize(1);
       setFile(null);
+      
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
       
     } catch (error: unknown) {
       const friendlyMessage = getErrorMessage(error);
