@@ -1,5 +1,7 @@
 import Head from 'next/head'
 import { useState } from 'react'
+import { getErrorMessage, getSuccessMessage, getLoadingMessage } from '../utils/errorMessages';
+import Notification, { useNotification } from '../components/Notification';
 
 export default function Upload() {
   const [category, setCategory] = useState('')
@@ -7,17 +9,68 @@ export default function Upload() {
   const [refStyle, setRefStyle] = useState('')
   const [workType, setWorkType] = useState('individual')
   const [groupSize, setGroupSize] = useState(1)
-  const [file, setFile] = useState<File | null>(null) // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [file, setFile] = useState<File | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { notification, showNotification, hideNotification } = useNotification()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!category || !language || !refStyle) {
+      showNotification('Please fill in all required fields.', 'error');
+      return;
+    }
+    
+    if (!file) {
+      showNotification('Please upload your project file.', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    showNotification(getLoadingMessage('upload'), 'loading');
+
+    try {
+      // Simulate file upload
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // On success
+      showNotification(getSuccessMessage('upload'), 'success');
+      
+      // Reset form
+      setCategory('');
+      setLanguage('');
+      setRefStyle('');
+      setWorkType('individual');
+      setGroupSize(1);
+      setFile(null);
+      
+    } catch (error: unknown) {
+      const friendlyMessage = getErrorMessage(error);
+      showNotification(friendlyMessage, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <>
       <Head>
         <title>Submit Task - CodeAi</title>
       </Head>
+      
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={hideNotification}
+        />
+      )}
+      
       <main className="min-h-screen bg-white p-8">
         <h1 className="text-3xl font-bold text-blue-600 mb-6">Submit Your Project</h1>
         
-        <form className="space-y-6 bg-gray-50 p-6 rounded shadow-md max-w-xl">
+        <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded shadow-md max-w-xl">
           
           {/* Task Type */}
           <div>
@@ -94,8 +147,12 @@ export default function Upload() {
           </div>
 
           {/* Submit */}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-semibold">
-            Submit Task
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white p-3 rounded-lg font-semibold transition-colors"
+          >
+            {isSubmitting ? 'Uploading Project...' : 'Submit Task'}
           </button>
         </form>
       </main>
