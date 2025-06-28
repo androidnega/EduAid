@@ -199,14 +199,27 @@ export default function Home() {
             <p className="mx-auto mt-6 max-w-2xl text-base text-blue-100 sm:text-lg">
               Join thousands of students who are already using CodeAi to excel in their I.T. coursework.
             </p>
-            <div className="mt-8">
-              <Link 
-                href="/upload" 
-                className="inline-flex items-center justify-center rounded-lg bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg transition-all hover:bg-gray-50 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 sm:text-lg"
-              >
-                Submit Your First Task
-              </Link>
-            </div>
+            {!loading && (
+              <div className="mt-8">
+                {user ? (
+                  // Logged in user - can submit task
+                  <Link 
+                    href="/upload" 
+                    className="inline-flex items-center justify-center rounded-lg bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg transition-all hover:bg-gray-50 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 sm:text-lg"
+                  >
+                    Submit Your First Task
+                  </Link>
+                ) : (
+                  // Not logged in - redirect to login
+                  <Link 
+                    href="/login" 
+                    className="inline-flex items-center justify-center rounded-lg bg-white px-8 py-4 text-base font-semibold text-blue-600 shadow-lg transition-all hover:bg-gray-50 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 sm:text-lg"
+                  >
+                    Sign In to Submit Task
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
         </section>
       </div>
