@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-import { getErrorMessage, getSuccessMessage } from '../utils/errorMessages';
+import Link from 'next/link';
 import Notification, { useNotification } from '../components/Notification';
 
 export default function AdminLogin() {
@@ -103,9 +103,9 @@ export default function AdminLogin() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Regular user?{' '}
-              <a href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+              <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
                 Student login here
-              </a>
+              </Link>
             </p>
           </div>
         </div>
