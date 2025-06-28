@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodeAI Platform",
-  description: "AI-powered code assistance and project management platform",
+  title: "EduAid Platform",
+  description: "AI-powered educational assistance and project management platform",
 };
 
 export default function RootLayout({

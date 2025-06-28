@@ -19,8 +19,8 @@ export default function LoginForm() {
       setError('');
       await signInWithGoogle();
       router.push('/dashboard');
-    } catch (error: any) {
-      setError(error.message || 'Failed to sign in with Google');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
@@ -39,8 +39,8 @@ export default function LoginForm() {
       }
       
       router.push('/dashboard');
-    } catch (error: any) {
-      setError(error.message || `Failed to ${isSignUp ? 'sign up' : 'sign in'}`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : `Failed to ${isSignUp ? 'sign up' : 'sign in'}`);
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export default function LoginForm() {
             {isSignUp ? 'Create your account' : 'Sign in to your account'}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Access CodeAI Platform
+            Access EduAid Platform
           </p>
         </div>
 
