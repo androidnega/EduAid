@@ -5,6 +5,7 @@ import Notification, { useNotification } from '../components/Notification'
 import { db, auth } from '../lib/firebase'
 import { collection, addDoc, Timestamp } from 'firebase/firestore'
 import DashboardLayout from '../components/DashboardLayout'
+import { API_CONFIG, getApiUrl } from '../lib/config'
 
 // Import mammoth for DOCX processing
 import mammoth from 'mammoth'
@@ -12,18 +13,30 @@ import mammoth from 'mammoth'
 // Types
 
 export default function Upload() {
-  // Core form state
-  const [category, setCategory] = useState('')
-  const [level, setLevel] = useState('')
+  // Basic Required Fields
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [institutionLevel, setInstitutionLevel] = useState('')
+  const [institutionType, setInstitutionType] = useState('')
+  const [courseName, setCourseName] = useState('')
+  const [taskType, setTaskType] = useState('')
   const [deadline, setDeadline] = useState('')
-  const [urgency, setUrgency] = useState('')
-  const [complexity, setComplexity] = useState('')
-  const [pageCount, setPageCount] = useState<number | ''>('')
   
-  // Multi-select arrays for coding tasks
-  const [languages, setLanguages] = useState<string[]>([])
+  // Optional Basic Fields
+  const [numPages, setNumPages] = useState<number | ''>('')
+  
+  // Coding/Software/App/Web Task Fields
+  const [programmingLanguages, setProgrammingLanguages] = useState<string[]>([])
   const [frameworks, setFrameworks] = useState<string[]>([])
   const [databases, setDatabases] = useState<string[]>([])
+  const [requiresHosting, setRequiresHosting] = useState(false)
+  const [uiDesignRequired, setUiDesignRequired] = useState(false)
+  const [deliveryFormat, setDeliveryFormat] = useState('')
+  
+  // Research/Documentation Task Fields
+  const [referenceStyle, setReferenceStyle] = useState('')
+  const [plagiarismCheck, setPlagiarismCheck] = useState(false)
+  const [chaptersIncluded, setChaptersIncluded] = useState<string[]>([])
   
   // File and content handling
   const [file, setFile] = useState<File | null>(null)
@@ -33,13 +46,14 @@ export default function Upload() {
   
   // Pricing and submission
   const [price, setPrice] = useState<number | null>(null)
-  const [aiPrice, setAiPrice] = useState<string | null>(null)
-  const [isLoadingAI, setIsLoadingAI] = useState(false)
-  const [showPricing, setShowPricing] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   // UI state
   const { notification, showNotification, hideNotification } = useNotification()
+  
+  // Legacy compatibility
+  const [urgency, setUrgency] = useState('')
+  const [complexity, setComplexity] = useState('medium')
 
   // Calculate urgency based on deadline
   useEffect(() => {
@@ -61,6 +75,21 @@ export default function Upload() {
     }
   }, [deadline])
 
+  // Auto-detect complexity based on task details
+  useEffect(() => {
+    if (taskType && programmingLanguages.length > 0) {
+      if (taskType.includes('AI') || taskType.includes('ML')) {
+        setComplexity('high')
+      } else if (frameworks.length > 2 || databases.length > 1) {
+        setComplexity('high')
+      } else if (frameworks.length > 0 || databases.length > 0) {
+        setComplexity('medium')
+      } else {
+        setComplexity('low')
+      }
+    }
+  }, [taskType, programmingLanguages, frameworks, databases])
+
   // Input sanitization function
   const sanitizeInput = (text: string): string => {
     return text
@@ -71,13 +100,32 @@ export default function Upload() {
       .trim()
   }
 
-  // Multi-select handler
-  const handleMultiSelect = (setter: (value: string[]) => void, current: string[], value: string) => {
-    if (current.includes(value)) {
-      setter(current.filter((v) => v !== value))
-    } else {
-      setter([...current, value])
+  // Check if FastAPI backend is available
+  const checkBackendAvailable = async (): Promise<boolean> => {
+    try {
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.HEALTH))
+      return response.ok
+    } catch {
+      return false
     }
+  }
+
+  // Process file through FastAPI backend
+  const processFileWithBackend = async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.FILE_UPLOAD), {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to process file with backend')
+    }
+
+    const result = await response.json()
+    return result.extracted_text || result.full_text || ''
   }
 
   // File upload and text extraction
@@ -98,22 +146,21 @@ export default function Upload() {
     try {
       let extractedText = ''
       
-      if (uploadedFile.name.toLowerCase().endsWith('.docx')) {
-        // Extract text from DOCX
-        const arrayBuffer = await uploadedFile.arrayBuffer()
-        const result = await mammoth.extractRawText({ arrayBuffer })
-        extractedText = result.value
-      } else if (uploadedFile.name.toLowerCase().endsWith('.txt')) {
-        // Extract text from TXT
-        extractedText = await uploadedFile.text()
-      } else if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
-        // For PDF, we'll show a message (pdf-parse requires server-side processing)
-        extractedText = `PDF file: ${uploadedFile.name} (${Math.round(uploadedFile.size / 1024)}KB) - PDF content analysis will be performed during AI pricing.`
+      // Try to use FastAPI backend first
+      const backendAvailable = await checkBackendAvailable()
+      
+      if (backendAvailable && (uploadedFile.name.toLowerCase().endsWith('.pdf') || uploadedFile.name.toLowerCase().endsWith('.docx'))) {
+        try {
+          showNotification('Processing file with AI backend...', 'loading')
+          extractedText = await processFileWithBackend(uploadedFile)
+        } catch (backendError) {
+          console.warn('Backend processing failed, falling back to client-side:', backendError)
+          // Fall back to client-side processing
+          extractedText = await processFileClientSide(uploadedFile)
+        }
       } else {
-        showNotification('Please upload a .txt, .docx, or .pdf file', 'error')
-        setFile(null)
-        setIsExtractingText(false)
-        return
+        // Use client-side processing
+        extractedText = await processFileClientSide(uploadedFile)
       }
 
       // Sanitize extracted text
@@ -136,30 +183,50 @@ export default function Upload() {
     }
   }
 
-  // AI validation of file content
+  // Client-side file processing (fallback)
+  const processFileClientSide = async (uploadedFile: File): Promise<string> => {
+    let extractedText = ''
+    
+    if (uploadedFile.name.toLowerCase().endsWith('.docx')) {
+      // Extract text from DOCX
+      const arrayBuffer = await uploadedFile.arrayBuffer()
+      const result = await mammoth.extractRawText({ arrayBuffer })
+      extractedText = result.value
+    } else if (uploadedFile.name.toLowerCase().endsWith('.txt')) {
+      // Extract text from TXT
+      extractedText = await uploadedFile.text()
+    } else if (uploadedFile.name.toLowerCase().endsWith('.pdf')) {
+      // For PDF, we'll show a message (pdf-parse requires server-side processing)
+      extractedText = `PDF file: ${uploadedFile.name} (${Math.round(uploadedFile.size / 1024)}KB) - PDF content analysis will be performed during AI pricing.`
+    } else {
+      throw new Error('Please upload a .txt, .docx, or .pdf file')
+    }
+
+    return extractedText
+  }
+
+  // AI validation of file content (FastAPI Backend)
   const validateFileContent = async (content: string) => {
-    if (!category) return // Skip validation if no category selected yet
+    if (!taskType) return // Skip validation if no task type selected yet
 
     setIsValidatingFile(true)
     showNotification('AI is validating your document...', 'loading')
 
     try {
-      const response = await fetch('/api/validate-content', {
+      const formData = new FormData()
+      const textBlob = new Blob([content], { type: 'text/plain' })
+      formData.append('file', textBlob, 'content.txt')
+
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.FILE_VALIDATE), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content: content.substring(0, 2000), // First 2000 chars for validation
-          expectedCategory: category
-        }),
+        body: formData,
       })
 
       if (response.ok) {
         const result = await response.json()
-        if (!result.isValid) {
+        if (!result.is_valid) {
           showNotification(
-            `Warning: The uploaded content doesn't seem to match "${category}". Please verify your task category.`,
+            `Warning: The uploaded content doesn't seem to match "${taskType}". Please verify your task type.`,
             'error'
           )
         } else {
@@ -175,9 +242,9 @@ export default function Upload() {
     }
   }
 
-  // Ghana-specific pricing calculation
+  // Calculate price using advanced algorithm
   const calculatePrice = () => {
-    if (!level) {
+    if (!institutionLevel) {
       showNotification('Please select academic level first', 'error')
       return
     }
@@ -185,92 +252,47 @@ export default function Upload() {
     let basePrice = 0
 
     // Base pricing by level
-    if (level === '100–200') basePrice = 80
-    else if (level === '300–400') basePrice = 250
-    else if (level === 'Masters' || level === 'PhD') basePrice = 450
+    if (institutionLevel === 'Level 100' || institutionLevel === 'Level 200') basePrice = 80
+    else if (institutionLevel === 'Level 300' || institutionLevel === 'Level 400') basePrice = 250
+    else if (institutionLevel === 'MSc' || institutionLevel === 'PhD') basePrice = 450
 
-    // Category modifiers
-    if (category.includes('Final Year Project')) basePrice += 200
-    if (category.includes('AI') || category.includes('Machine Learning')) basePrice += 150
-    if (category.includes('Web Development')) basePrice += 100
-    if (category.includes('Database')) basePrice += 75
+    // Task type modifiers
+    if (taskType.includes('Final Year Project')) basePrice += 200
+    if (taskType.includes('AI') || taskType.includes('Machine Learning')) basePrice += 150
+    if (taskType.includes('Web Development')) basePrice += 100
+    if (taskType.includes('Database')) basePrice += 75
 
     // Urgency modifiers
     if (urgency === 'urgent') basePrice += 100
     if (urgency === 'very-urgent') basePrice += 200
 
     // Complexity modifiers
-    if (complexity === 'complex') basePrice += 100
-    if (complexity === 'AI/advanced') basePrice += 150
+    if (complexity === 'high') basePrice += 100
+    if (complexity === 'medium') basePrice += 50
 
-    // Page count modifiers (for non-coding tasks)
-    if (!category.includes('Coding') && pageCount) {
-      if (pageCount > 10) basePrice += 50
-      if (pageCount > 20) basePrice += 100
+    // Page count modifiers (for research/documentation tasks)
+    if (['Research', 'Assignment', 'Thesis', 'Dissertation'].includes(taskType) && numPages) {
+      if (numPages > 10) basePrice += 50
+      if (numPages > 20) basePrice += 100
     }
 
     // Technology stack modifiers (for coding tasks)
-    if (category.includes('Coding')) {
-      basePrice += languages.length * 25
+    if (['Coding Project', 'App Development', 'Web Development', 'AI/ML Project'].includes(taskType)) {
+      basePrice += programmingLanguages.length * 25
       basePrice += frameworks.length * 50
       basePrice += databases.length * 40
     }
+
+    // Special requirements
+    if (requiresHosting) basePrice += 50
+    if (uiDesignRequired) basePrice += 75
+    if (plagiarismCheck) basePrice += 10
 
     // Discounts
     if (basePrice > 500) basePrice *= 0.97
     if (basePrice > 800) basePrice *= 0.955
 
     setPrice(Math.round(basePrice))
-    setShowPricing(true)
-  }
-
-  // AI-powered price suggestion
-  const handleAIPriceCheck = async () => {
-    if (!category || !level || !urgency || !complexity) {
-      showNotification('Please fill in all required fields first', 'error')
-      return
-    }
-
-    setIsLoadingAI(true)
-    showNotification('AI is analyzing your task for pricing...', 'loading')
-
-    try {
-      const taskDetails = {
-        category,
-        level,
-        urgency,
-        pageCount: typeof pageCount === 'number' ? pageCount : 0,
-        complexity,
-        language: languages.join(', ') || 'Not specified',
-        frameworks: frameworks.join(', '),
-        databases: databases.join(', '),
-        deadline,
-        description: `${category} project for ${level} level with ${urgency} urgency`,
-        fileContent: fileText.substring(0, 1000)
-      }
-
-      const response = await fetch('/api/ai-price', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(taskDetails),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to get AI price suggestion')
-      }
-
-      const result = await response.json()
-      setAiPrice(result.price)
-      setShowPricing(true)
-      showNotification('AI price analysis complete!', 'success')
-    } catch (error) {
-      console.error('AI Price Error:', error)
-      showNotification('Failed to get AI price suggestion. Please try again.', 'error')
-    } finally {
-      setIsLoadingAI(false)
-    }
   }
 
   // Form submission
@@ -284,17 +306,17 @@ export default function Upload() {
     }
 
     // Validation
-    if (!category || !level || !urgency || !complexity) {
+    if (!taskType || !institutionLevel || !title) {
       showNotification('Please fill in all required fields.', 'error')
       return
     }
 
-    if (category.includes('Coding') && languages.length === 0) {
+    if (['Coding Project', 'App Development', 'Web Development', 'AI/ML Project'].includes(taskType) && programmingLanguages.length === 0) {
       showNotification('Please select at least one programming language for coding tasks.', 'error')
       return
     }
 
-    if (!category.includes('Coding') && !pageCount) {
+    if (['Research', 'Assignment', 'Thesis', 'Dissertation'].includes(taskType) && !numPages) {
       showNotification('Please specify estimated page count for this task type.', 'error')
       return
     }
@@ -314,17 +336,26 @@ export default function Upload() {
 
     try {
       await addDoc(collection(db, 'tasks'), {
-        category,
-        level,
+        title,
+        description,
+        taskType,
+        institutionLevel,
+        institutionType,
+        courseName,
         urgency,
         complexity,
         deadline,
-        pageCount: pageCount || 0,
-        languages: languages.join(', '),
+        numPages: numPages || 0,
+        programmingLanguages: programmingLanguages.join(', '),
         frameworks: frameworks.join(', '),
         databases: databases.join(', '),
+        requiresHosting,
+        uiDesignRequired,
+        deliveryFormat,
+        referenceStyle,
+        plagiarismCheck,
+        chaptersIncluded: chaptersIncluded.join(', '),
         estimatedPrice: price || 0,
-        aiPrice: aiPrice || '',
         fileName: file.name,
         fileSize: file.size,
         fileType: file.type,
@@ -338,20 +369,28 @@ export default function Upload() {
       showNotification(getSuccessMessage('upload'), 'success')
 
       // Reset form
-      setCategory('')
-      setLevel('')
+      setTitle('')
+      setDescription('')
+      setTaskType('')
+      setInstitutionLevel('')
+      setInstitutionType('')
+      setCourseName('')
       setDeadline('')
       setUrgency('')
-      setComplexity('')
-      setPageCount('')
-      setLanguages([])
+      setComplexity('medium')
+      setNumPages('')
+      setProgrammingLanguages([])
       setFrameworks([])
       setDatabases([])
+      setRequiresHosting(false)
+      setUiDesignRequired(false)
+      setDeliveryFormat('')
+      setReferenceStyle('')
+      setPlagiarismCheck(false)
+      setChaptersIncluded([])
       setFile(null)
       setFileText('')
       setPrice(null)
-      setAiPrice(null)
-      setShowPricing(false)
 
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
       if (fileInput) fileInput.value = ''
@@ -398,176 +437,336 @@ export default function Upload() {
               
               {/* LEFT COLUMN - Task Details */}
               <div className="space-y-6">
-                <div className="bg-gray-50 rounded-lg p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    📋 Task Information
-                  </h3>
+                {/* Basic Required Fields Section */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold text-blue-800 mb-4">📋 Basic Information</h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Task Category */}
-                    <div className="md:col-span-2">
-                      <label className="block font-semibold text-gray-700 mb-2">Task Category *</label>
-                      <select 
-                        className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                        value={category} 
-                        onChange={e => setCategory(e.target.value)}
-                      >
-                        <option value="">Select Task Type</option>
-                        <option>Coding Assignment</option>
-                        <option>Web Development Task</option>
-                        <option>Database Assignment</option>
-                        <option>Networking Work</option>
-                        <option>AI/Machine Learning Project</option>
-                        <option>Mobile App Development</option>
-                        <option>Mini Project (I.T)</option>
-                        <option>Final Year Project (I.T)</option>
-                        <option>Theory/Research Task</option>
-                      </select>
-                    </div>
+                  {/* Task Title */}
+                  <div className="mb-4">
+                    <label className="block font-semibold text-gray-700 mb-2">Task Title *</label>
+                    <input
+                      type="text"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., E-commerce Website with Payment Integration"
+                      value={title}
+                      onChange={e => setTitle(e.target.value)}
+                    />
+                  </div>
 
-                    {/* Academic Level */}
-                    <div>
-                      <label className="block font-semibold text-gray-700 mb-2">Academic Level *</label>
-                      <select 
-                        className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                        value={level} 
-                        onChange={e => setLevel(e.target.value)}
-                      >
-                        <option value="">Select Level</option>
-                        <option value="100–200">Level 100–200 (1st & 2nd Year)</option>
-                        <option value="300–400">Level 300–400 (3rd & 4th Year)</option>
-                        <option value="Masters">Masters Degree</option>
-                        <option value="PhD">PhD Level</option>
-                      </select>
-                    </div>
+                  {/* Task Description */}
+                  <div className="mb-4">
+                    <label className="block font-semibold text-gray-700 mb-2">Task Description *</label>
+                    <textarea
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-24"
+                      placeholder="Describe what you need to be done..."
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                    />
+                  </div>
 
-                    {/* Deadline */}
-                    <div>
-                      <label className="block font-semibold text-gray-700 mb-2">Submission Deadline *</label>
-                      <input 
-                        type="date" 
-                        min={getMinDate()}
-                        value={deadline} 
-                        onChange={e => setDeadline(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
+                  {/* Task Type */}
+                  <div className="mb-4">
+                    <label className="block font-semibold text-gray-700 mb-2">Task Type *</label>
+                    <select 
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                      value={taskType}
+                      onChange={e => setTaskType(e.target.value)}
+                    >
+                      <option value="">Select Task Type</option>
+                      <option value="Assignment">Assignment</option>
+                      <option value="Coding Project">Coding Project</option>
+                      <option value="Mini Project">Mini Project</option>
+                      <option value="Research">Research</option>
+                      <option value="App Development">App Development</option>
+                      <option value="Web Development">Web Development</option>
+                      <option value="Database Assignment">Database Assignment</option>
+                      <option value="AI/ML Project">AI/ML Project</option>
+                      <option value="Mobile App">Mobile App</option>
+                      <option value="Desktop Application">Desktop Application</option>
+                      <option value="Final Year Project">Final Year Project</option>
+                      <option value="Thesis">Thesis</option>
+                      <option value="Dissertation">Dissertation</option>
+                    </select>
+                  </div>
 
-                    {/* Auto-calculated Urgency */}
-                    {urgency && (
-                      <div className="md:col-span-2">
-                        <label className="block font-semibold text-gray-700 mb-2">Urgency (Auto-calculated)</label>
-                        <div className={`p-3 rounded-lg border-2 ${
-                          urgency === 'very-urgent' ? 'bg-red-50 border-red-200 text-red-700' :
-                          urgency === 'urgent' ? 'bg-orange-50 border-orange-200 text-orange-700' :
-                          urgency === 'standard' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
-                          'bg-green-50 border-green-200 text-green-700'
-                        }`}>
-                          <span className="font-medium">
-                            {urgency === 'very-urgent' && '🔴 Very Urgent (≤1 day) +₵200'}
-                            {urgency === 'urgent' && '🟠 Urgent (2-3 days) +₵100'}
-                            {urgency === 'standard' && '🟡 Standard (4-7 days) +₵50'}
-                            {urgency === 'flexible' && '🟢 Flexible (7+ days)'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                  {/* Institution Level */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">Academic Level *</label>
+                    <select 
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      value={institutionLevel}
+                      onChange={e => setInstitutionLevel(e.target.value)}
+                    >
+                      <option value="">Select Level</option>
+                      <option value="Diploma">Diploma</option>
+                      <option value="HND">HND</option>
+                      <option value="Level 100">Level 100</option>
+                      <option value="Level 200">Level 200</option>
+                      <option value="Level 300">Level 300</option>
+                      <option value="Level 400">Level 400</option>
+                      <option value="MSc">MSc</option>
+                      <option value="MPhil">MPhil</option>
+                      <option value="PhD">PhD</option>
+                    </select>
+                  </div>
 
-                    {/* Technical Complexity */}
-                    <div>
-                      <label className="block font-semibold text-gray-700 mb-2">Technical Difficulty *</label>
-                      <select 
-                        className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                        value={complexity} 
-                        onChange={e => setComplexity(e.target.value)}
-                      >
-                        <option value="">Select Difficulty</option>
-                        <option value="simple">Simple (Basic concepts)</option>
-                        <option value="moderate">Moderate (Intermediate)</option>
-                        <option value="complex">Complex (Advanced) +₵100</option>
-                        <option value="AI/advanced">AI/Advanced Research +₵150</option>
-                      </select>
-                    </div>
+                  {/* Institution Type */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">Institution Type</label>
+                    <select 
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      value={institutionType}
+                      onChange={e => setInstitutionType(e.target.value)}
+                    >
+                      <option value="">Select Institution Type</option>
+                      <option value="Public University">Public University</option>
+                      <option value="Technical University">Technical University</option>
+                      <option value="Private University">Private University</option>
+                      <option value="Polytechnic">Polytechnic</option>
+                      <option value="College">College</option>
+                    </select>
+                  </div>
 
-                    {/* Page Count - Only for non-coding tasks */}
-                    {category && !category.includes('Coding') && (
-                      <div>
-                        <label className="block font-semibold text-gray-700 mb-2">Estimated Pages/Chapters *</label>
-                        <input 
-                          type="number" 
-                          min="1" 
-                          max="100"
-                          value={pageCount} 
-                          onChange={e => setPageCount(Number(e.target.value) || '')} 
-                          className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                          placeholder="e.g., 10"
-                        />
-                      </div>
-                    )}
+                  {/* Course Name */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">Course Title</label>
+                    <input
+                      type="text"
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., Computer Science"
+                      value={courseName}
+                      onChange={e => setCourseName(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Deadline */}
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-2">Deadline *</label>
+                    <input 
+                      type="date" 
+                      min={getMinDate()}
+                      value={deadline} 
+                      onChange={e => setDeadline(e.target.value)}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
                   </div>
                 </div>
 
-                {/* Technology Stack - Only for coding tasks */}
-                {category && category.includes('Coding') && (
-                  <div className="bg-purple-50 rounded-lg p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                      💻 Technology Stack
-                    </h3>
+                {/* Coding/Software/App/Web Task Fields - Conditional Section */}
+                {taskType && ['Coding Project', 'App Development', 'Web Development', 'AI/ML Project', 'Mobile App', 'Desktop Application'].includes(taskType) && (
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-green-800 mb-4">💻 Technical Requirements</h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {/* Programming Languages */}
+                    {/* Programming Languages */}
+                    <div className="mb-4">
+                      <label className="block font-semibold text-gray-700 mb-2">Programming Languages *</label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {['HTML', 'CSS', 'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'PHP', 'Ruby', 'Go', 'Swift', 'Kotlin', 'SQL'].map(lang => (
+                          <label key={lang} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="mr-2"
+                              checked={programmingLanguages.includes(lang)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setProgrammingLanguages([...programmingLanguages, lang])
+                                } else {
+                                  setProgrammingLanguages(programmingLanguages.filter(l => l !== lang))
+                                }
+                              }}
+                            />
+                            <span className="text-sm">{lang}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Frameworks */}
+                    <div>
+                      <label className="block font-semibold text-gray-700 mb-2">Frameworks & Libraries</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {['React', 'Vue.js', 'Angular', 'Laravel', 'Django', 'Flask', 'Express.js', 'Spring Boot', 'ASP.NET', 'Flutter', 'React Native'].map(framework => (
+                          <label key={framework} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="mr-2"
+                              checked={frameworks.includes(framework)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setFrameworks([...frameworks, framework])
+                                } else {
+                                  setFrameworks(frameworks.filter(f => f !== framework))
+                                }
+                              }}
+                            />
+                            <span className="text-sm">{framework}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Databases */}
+                    <div>
+                      <label className="block font-semibold text-gray-700 mb-2">Databases</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {['MySQL', 'PostgreSQL', 'MongoDB', 'SQLite', 'Firebase', 'Redis', 'Oracle', 'SQL Server'].map(db => (
+                          <label key={db} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="mr-2"
+                              checked={databases.includes(db)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setDatabases([...databases, db])
+                                } else {
+                                  setDatabases(databases.filter(d => d !== db))
+                                }
+                              }}
+                            />
+                            <span className="text-sm">{db}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
-                        <label className="block font-semibold text-gray-700 mb-3">Programming Languages *</label>
-                        <div className="space-y-2">
-                          {['JavaScript', 'Python', 'Java', 'C/C++', 'PHP', 'MySQL/SQL', 'HTML/CSS', 'Other'].map((lang) => (
-                            <label key={lang} className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={languages.includes(lang)}
-                                onChange={() => handleMultiSelect(setLanguages, languages, lang)}
-                                className="mr-2 text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="text-sm">{lang}</span>
-                            </label>
-                          ))}
-                        </div>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            className="mr-2"
+                            checked={requiresHosting}
+                            onChange={e => setRequiresHosting(e.target.checked)}
+                          />
+                          <span className="font-semibold">Requires Hosting/Deployment</span>
+                        </label>
+                        <p className="text-sm text-gray-600 ml-6">Live deployment needed</p>
                       </div>
 
-                      {/* Frameworks */}
                       <div>
-                        <label className="block font-semibold text-gray-700 mb-3">Frameworks</label>
-                        <div className="space-y-2">
-                          {['React', 'Node.js', 'Django', 'Laravel', 'Flutter', 'Bootstrap', 'Other'].map((fw) => (
-                            <label key={fw} className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={frameworks.includes(fw)}
-                                onChange={() => handleMultiSelect(setFrameworks, frameworks, fw)}
-                                className="mr-2 text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="text-sm">{fw}</span>
-                            </label>
-                          ))}
-                        </div>
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            className="mr-2"
+                            checked={uiDesignRequired}
+                            onChange={e => setUiDesignRequired(e.target.checked)}
+                          />
+                          <span className="font-semibold">UI/UX Design Required</span>
+                        </label>
+                        <p className="text-sm text-gray-600 ml-6">Custom design needed</p>
+                      </div>
+                    </div>
+
+                    {/* Delivery Format */}
+                    <div>
+                      <label className="block font-semibold text-gray-700 mb-2">Preferred Delivery Format</label>
+                      <select 
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        value={deliveryFormat}
+                        onChange={e => setDeliveryFormat(e.target.value)}
+                      >
+                        <option value="">Select Format</option>
+                        <option value="Zip File">Zip File Download</option>
+                        <option value="GitHub Repository">GitHub Repository</option>
+                        <option value="Hosted URL">Hosted URL (Live Site)</option>
+                        <option value="Executable">Executable Application</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Research/Documentation Task Fields - Conditional Section */}
+                {taskType && ['Research', 'Assignment', 'Thesis', 'Dissertation', 'Final Year Project'].includes(taskType) && (
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold text-purple-800 mb-4">📚 Research & Documentation</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      {/* Number of Pages */}
+                      <div>
+                        <label className="block font-semibold text-gray-700 mb-2">Number of Pages</label>
+                        <input
+                          type="number"
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="e.g., 10"
+                          value={numPages}
+                          onChange={e => setNumPages(e.target.value ? parseInt(e.target.value) : '')}
+                          min="1"
+                        />
                       </div>
 
-                      {/* Databases */}
+                      {/* Reference Style */}
                       <div>
-                        <label className="block font-semibold text-gray-700 mb-3">Databases</label>
-                        <div className="space-y-2">
-                          {['MySQL', 'PostgreSQL', 'MongoDB', 'SQLite', 'Firebase', 'Other'].map((db) => (
-                            <label key={db} className="flex items-center">
-                              <input
-                                type="checkbox"
-                                checked={databases.includes(db)}
-                                onChange={() => handleMultiSelect(setDatabases, databases, db)}
-                                className="mr-2 text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="text-sm">{db}</span>
-                            </label>
-                          ))}
-                        </div>
+                        <label className="block font-semibold text-gray-700 mb-2">Reference Style</label>
+                        <select 
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          value={referenceStyle}
+                          onChange={e => setReferenceStyle(e.target.value)}
+                        >
+                          <option value="">Select Style</option>
+                          <option value="APA">APA Style</option>
+                          <option value="MLA">MLA Style</option>
+                          <option value="IEEE">IEEE Style</option>
+                          <option value="Harvard">Harvard Style</option>
+                          <option value="Chicago">Chicago Style</option>
+                        </select>
                       </div>
+
+                      {/* Plagiarism Check */}
+                      <div className="flex items-center justify-center">
+                        <label className="flex items-center">
+                          <input
+                            type="checkbox"
+                            className="mr-2"
+                            checked={plagiarismCheck}
+                            onChange={e => setPlagiarismCheck(e.target.checked)}
+                          />
+                          <span className="font-semibold">Include Plagiarism Check (+₵10)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Chapters/Sections */}
+                    <div>
+                      <label className="block font-semibold text-gray-700 mb-2">Required Chapters/Sections</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {['Abstract', 'Introduction', 'Literature Review', 'Methodology', 'Results', 'Discussion', 'Conclusion', 'References', 'Appendices'].map(chapter => (
+                          <label key={chapter} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              className="mr-2"
+                              checked={chaptersIncluded.includes(chapter)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setChaptersIncluded([...chaptersIncluded, chapter])
+                                } else {
+                                  setChaptersIncluded(chaptersIncluded.filter(c => c !== chapter))
+                                }
+                              }}
+                            />
+                            <span className="text-sm">{chapter}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Urgency Display */}
+                {urgency && (
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <label className="block font-semibold text-gray-700 mb-2">Urgency (Auto-calculated)</label>
+                    <div className={`p-3 rounded-lg border-2 ${
+                      urgency === 'very-urgent' ? 'bg-red-50 border-red-200 text-red-700' :
+                      urgency === 'urgent' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                      urgency === 'standard' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
+                      'bg-green-50 border-green-200 text-green-700'
+                    }`}>
+                      <span className="font-medium">
+                        {urgency === 'very-urgent' && '🔴 Very Urgent (≤1 day)'}
+                        {urgency === 'urgent' && '🟠 Urgent (2-3 days)'}
+                        {urgency === 'standard' && '🟡 Standard (4-7 days)'}
+                        {urgency === 'flexible' && '🟢 Flexible (7+ days)'}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -608,17 +807,11 @@ export default function Upload() {
 
                   {/* File Text Preview */}
                   {fileText && (
-                    <div className="mt-6">
-                      <label className="block font-semibold text-gray-700 mb-2">Extracted Content Preview</label>
-                      <textarea
-                        value={fileText}
-                        onChange={(e) => setFileText(sanitizeInput(e.target.value))}
-                        className="w-full h-32 border border-gray-300 rounded-lg p-3 resize-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        placeholder="Extracted text will appear here..."
-                      />
-                      <p className="text-xs text-gray-500 mt-2">
-                        You can edit the extracted text if needed. This content will be used for AI analysis.
-                      </p>
+                    <div className="mt-4">
+                      <label className="block font-semibold text-gray-700 mb-2">Content Preview</label>
+                      <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                        <p className="text-sm text-gray-600">{fileText.substring(0, 500)}...</p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -626,97 +819,59 @@ export default function Upload() {
                 {/* Pricing Section */}
                 <div className="bg-blue-50 rounded-lg p-6">
                   <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    💰 Pricing Analysis
+                    💰 Project Pricing
                   </h3>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-1 gap-4 mb-4">
                     <button 
                       type="button" 
                       onClick={calculatePrice} 
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     >
-                      💰 Check Logic Price
-                    </button>
-
-                    <button 
-                      type="button" 
-                      onClick={handleAIPriceCheck}
-                      disabled={isLoadingAI || !category || !level || !urgency || !complexity}
-                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white py-3 rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
-                    >
-                      {isLoadingAI ? (
-                        <div className="flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          AI Analyzing...
-                        </div>
-                      ) : (
-                        '🤖 Get AI Price'
-                      )}
+                      Calculate Project Cost
                     </button>
                   </div>
 
                   {/* Price Display */}
-                  {showPricing && (price || aiPrice) && (
-                    <div className="space-y-4">
-                      {price && (
-                        <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-700 mb-2">
-                              Logic-Based Price: ₵{price.toFixed(2)}
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              Calculated based on level, complexity, urgency, and technology stack
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {aiPrice && (
-                        <div className="bg-white rounded-lg p-4 border-2 border-purple-200">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-purple-700 mb-2">
-                              AI Suggested Price: {aiPrice}
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              AI-powered analysis including file content and task complexity
-                            </p>
-                            <div className="mt-3 text-xs text-purple-600 font-medium">
-                              🤖 Enhanced with OpenAI analysis
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                  {price !== null && (
+                    <div className="bg-white rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-gray-700">Estimated Price:</span>
+                        <span className="text-xl font-bold text-green-600">
+                          ₵{price.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
 
-            {/* Submit Button */}
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <button 
-                type="submit" 
-                disabled={isSubmitting || !category || !level || !complexity || !deadline || !file}
-                className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-4 rounded-lg font-bold text-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-lg"
-              >
-                {isSubmitting ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    Submitting Project...
-                  </div>
-                ) : (
-                  <span className="flex items-center justify-center">
-                    🚀 Submit Task{price ? ` (₵${price.toFixed(2)})` : aiPrice ? ` (${aiPrice})` : ''}
-                    <span className="ml-2">→</span>
-                  </span>
-                )}
-              </button>
-              
-              {(!category || !level || !complexity || !deadline || !file) && (
-                <p className="text-center text-sm text-gray-500 mt-2">
-                  Please fill in all required fields to submit your task
-                </p>
-              )}
+                {/* Submit Button */}
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting || !taskType || !institutionLevel || !complexity || !deadline || !file}
+                    className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-4 rounded-lg font-bold text-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 shadow-lg"
+                  >
+                    {isSubmitting ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Submitting...
+                      </div>
+                    ) : (
+                      <span className="flex items-center justify-center">
+                        🚀 Submit Task {price !== null ? ` (₵${price.toFixed(2)})` : ''}
+                        <span className="ml-2">→</span>
+                      </span>
+                    )}
+                  </button>
+                  
+                  {(!taskType || !institutionLevel || !complexity || !deadline || !file) && (
+                    <p className="text-center text-sm text-gray-500 mt-2">
+                      Please fill in all required fields to submit your task
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </form>
         </div>
