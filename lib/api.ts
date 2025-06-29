@@ -1,8 +1,8 @@
 // API Configuration
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // API client for FastAPI backend integration
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8001';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://127.0.0.1:8000';
 
 export interface TaskDetails {
   task_title: string;
@@ -158,23 +158,23 @@ export const handleApiError = (error: unknown): string => {
 };
 
 // Legacy support for existing code (gradually migrate away from this)
-export async function generatePriceFromAI(taskDetails: any): Promise<string> {
+export async function generatePriceFromAI(taskDetails: Partial<TaskDetails>): Promise<string> {
   try {
     const response = await apiClient.calculatePrice({
       task_title: taskDetails.task_title || 'Untitled Task',
-      task_type: taskDetails.category || taskDetails.task_type || 'General',
-      institution_level: taskDetails.level || taskDetails.institution_level || 'Level 100',
+      task_type: taskDetails.task_type || 'General',
+      institution_level: taskDetails.institution_level || 'Level 100',
       course_subject: taskDetails.course_subject || 'Computer Science',
-      deadline: taskDetails.urgency || taskDetails.deadline || '1 week',
+      deadline: taskDetails.deadline || '1 week',
       description: taskDetails.description || '',
-      page_count: taskDetails.pageCount || taskDetails.page_count || 1,
+      page_count: taskDetails.page_count || 1,
       complexity: taskDetails.complexity || 'medium',
       languages: taskDetails.languages || [],
       frameworks: taskDetails.frameworks || [],
       database: taskDetails.database,
       hosting_required: taskDetails.hosting_required || false,
       is_group_project: taskDetails.is_group_project || false,
-      file_content: taskDetails.fileContent || taskDetails.file_content,
+      file_content: taskDetails.file_content,
     });
 
     return response.price;
